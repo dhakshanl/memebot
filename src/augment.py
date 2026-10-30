@@ -78,14 +78,46 @@ def random_time_shift(y, max_frac=0.2):
     return np.roll(y, shift)
 
 
-def augment_once(y, sr):
+def load_background_beds():
+    """Real ambient recordings from the backgroundnoise class, used as the
+    'room' short utterances get placed into."""
+    beds = []
+    for f in glob.glob(os.path.join(RAW_DIR, 'backgroundnoise', '*')):
+        if f.lower().endswith(('.mp3', '.ogg', '.wav', '.m4a')):
+            y, _ = librosa.load(f, sr=SR, mono=True)
+            if len(y):
+                beds.append(y)
+    return beds
+
+
+def place_in_background(y, beds, rel_range=(0.02, 0.3)):
+    """
+    Drop the utterance at a random offset inside a DURATION-long window of
+    real background noise. Live mic clips are always 4s of real room sound
+    with the phrase somewhere in it; without this, short classes (eppudra,
+    ~1.4s) were only ever seen padded with synthetic Gaussian hiss, and the
+    model learned "clean padding = eppudra, real noise everywhere = rajini"
+    — so live input was almost always classified as rajini.
+    """
+    y = y[:N_SAMPLES]
+    bed = random_crop(np.resize(beds[RNG.integers(len(beds))], N_SAMPLES * 2))
+    peak = np.max(np.abs(y)) + 1e-9
+    bed = bed / (np.max(np.abs(bed)) + 1e-9) * peak * RNG.uniform(*rel_range)
+    offset = RNG.integers(0, N_SAMPLES - len(y) + 1)
+    bed[offset:offset + len(y)] += y
+    return bed.astype(np.float32)
+
+
+def augment_once(y, sr, beds=None):
     """Apply a random subset of augmentations to one clip."""
     out = y.copy()
     if RNG.random() < 0.7:
         out = random_pitch_shift(out, sr)
     if RNG.random() < 0.7:
         out = random_time_stretch(out)
-    if RNG.random() < 0.5:
+    if beds and RNG.random() < 0.8:
+        out = place_in_background(out, beds)
+    elif RNG.random() < 0.5:
         out = random_time_shift(out)
     if RNG.random() < 0.8:
         out = add_noise(out)
@@ -94,6 +126,8 @@ def augment_once(y, sr):
 
 def start_augmentation():
     print(f"Starting augmentation for: {LABELS}")
+    beds = load_background_beds()
+    print(f"Loaded {len(beds)} background recordings for placement augmentation")
 
     for label in LABELS:
         src_dir = os.path.join(RAW_DIR, label)
@@ -130,7 +164,7 @@ def start_augmentation():
                 sf.write(os.path.join(dst_dir, f"base_{stem}.wav"), base, SR)
                 n_written += 1
                 for i in range(VARIANTS_PER_FILE):
-                    clip = augment_once(y, SR)
+                    clip = augment_once(y, SR, beds if label != 'backgroundnoise' else None)
                     out_path = os.path.join(dst_dir, f"aug_{i}_{stem}.wav")
                     sf.write(out_path, clip, SR)
                     n_written += 1

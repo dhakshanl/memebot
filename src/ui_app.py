@@ -13,11 +13,11 @@ import streamlit as st
 from keras import models
 from sklearn.decomposition import PCA
 
-from config import DURATION, EMBED_MODEL_PATH, N_SAMPLES, SR
-from augment import fix_length
+from config import DURATION, EMBED_MODEL_PATH, SR
 from preprocess import clip_to_logmel
 from live_detect import (MARGIN_THRESHOLD, SIMILARITY_THRESHOLD,
-                          WARMUP_SECONDS, get_mic_id, load_index, retrieve)
+                          get_mic_id, get_speaker_id, load_index,
+                          play_meme_sound, record_clip, retrieve)
 
 st.set_page_config(page_title="Meme Detector Inspector", layout="wide")
 
@@ -39,11 +39,28 @@ devices = sd.query_devices()
 input_devices = [(i, d["name"]) for i, d in enumerate(devices) if d["max_input_channels"] > 0]
 default_idx = get_mic_id()
 default_pos = next((pos for pos, (i, _) in enumerate(input_devices) if i == default_idx), 0)
+output_devices = [(i, d["name"]) for i, d in enumerate(devices) if d["max_output_channels"] > 0]
+
+
+def matching_speaker_pos(mic_name):
+    """Default the speaker to the same hardware as the mic, e.g.
+    'Microphone (AB13X USB Audio)' -> 'Speakers (AB13X USB Audio)'."""
+    if "(" in mic_name:
+        speaker_id = get_speaker_id(mic_name.split("(", 1)[1].rstrip(")"))
+    else:
+        speaker_id = get_speaker_id()
+    return next((pos for pos, (i, _) in enumerate(output_devices) if i == speaker_id), 0)
+
 
 with st.sidebar:
     st.header("Input")
     choice = st.selectbox(
         "Microphone", input_devices, index=default_pos,
+        format_func=lambda t: f"{t[0]}: {t[1]}",
+    )
+    speaker_choice = st.selectbox(
+        "Speaker (plays the original meme audio on detection)", output_devices,
+        index=matching_speaker_pos(choice[1]),
         format_func=lambda t: f"{t[0]}: {t[1]}",
     )
     duration = st.slider("Recording length (s)", 1.0, 6.0, float(DURATION), 0.5)
@@ -52,11 +69,7 @@ with st.sidebar:
 if record_clicked:
     mic_id = choice[0]
     with st.spinner(f"Recording {duration:.1f}s from device {mic_id}..."):
-        n_total = int((duration + WARMUP_SECONDS) * SR)
-        recording = sd.rec(n_total, samplerate=SR, channels=1, device=mic_id)
-        sd.wait()
-    audio = np.squeeze(recording)[int(WARMUP_SECONDS * SR):]
-    audio = fix_length(audio, N_SAMPLES)
+        audio = record_clip(duration, mic_id)
 
     logmel = clip_to_logmel(audio)
     query_embedding = encoder.predict(logmel[np.newaxis, ..., np.newaxis], verbose=0)[0]
@@ -70,6 +83,8 @@ if record_clicked:
         best_label=best_label, best_score=best_score,
         second_label=second_label, second_score=second_score,
     )
+    # only play right after a fresh recording, not on every widget rerun
+    st.session_state["play_pending"] = True
 
 result = st.session_state.get("result")
 if result is None:
@@ -135,6 +150,7 @@ with col2:
     st.pyplot(fig)
 
 st.subheader("Verdict")
+play_pending = st.session_state.pop("play_pending", False)
 is_confident = (
     result["best_score"] >= SIMILARITY_THRESHOLD
     and (result["best_score"] - result["second_score"]) >= MARGIN_THRESHOLD
@@ -151,3 +167,6 @@ else:
         f"({result['best_score'] * 100:.1f}%, runner-up {result['second_label']} "
         f"{result['second_score'] * 100:.1f}%)"
     )
+    if play_pending:
+        if not play_meme_sound(result["best_label"], speaker_choice[0], wait=False):
+            st.caption(f"(no original audio in data/meme_sounds/ for '{result['best_label']}')")

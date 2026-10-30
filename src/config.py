@@ -3,10 +3,16 @@ import os
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW_DIR = os.path.join(BASE_DIR, 'data', 'raw')
 AUG_DIR = os.path.join(BASE_DIR, 'data', 'augmented')
+REFERENCE_DIR = os.path.join(BASE_DIR, 'data', 'reference')     # "what to say" clips, kept out of training
+MEME_SOUNDS_DIR = os.path.join(BASE_DIR, 'data', 'meme_sounds')  # payoff audio played on a confident match
 MODELS_DIR = os.path.join(BASE_DIR, 'models')
 FEATURES_DIR = BASE_DIR
 
-LABELS = ['backgroundnoise', 'eppudra', 'rajini']
+# scanned from data/raw/ so adding a new trigger (a new subfolder) doesn't
+# require editing this file
+LABELS = sorted(
+    d for d in os.listdir(RAW_DIR) if os.path.isdir(os.path.join(RAW_DIR, d))
+) if os.path.isdir(RAW_DIR) else ['backgroundnoise']
 
 SR = 22050
 DURATION = 4.0                       # seconds, fixed window every clip is padded/cropped to
