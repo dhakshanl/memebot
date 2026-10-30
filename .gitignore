@@ -9,13 +9,18 @@ data/augmented/
 X.npy
 y.npy
 
-# scratch / experiment files, not part of the project structure
-MemeBot ppt.pptx
-Recording (3).m4a
-Recording (5).m4a
-epudra_og.wav
-meme1.wav
-meme1_clean.wav
-meme2.wav
-meme2_clean.wav
-rajini_og.wav
+# old model snapshots
+models/backup_*/
+
+# documents and slides — not part of the app
+*.pptx
+*.ppt
+*.docx
+*.doc
+*.pdf
+
+# scratch / experiment audio outside the data/ structure
+/*.wav
+/*.m4a
+data/meme1.wav
+data/meme2.wav
