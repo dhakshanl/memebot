@@ -9,7 +9,7 @@ It recognises short spoken phrases (currently the Tamil triggers **"eppudra"** a
 *The Inspector page: a recorded rajini take goes through every stage of the pipeline and is detected at 99.9% similarity.*
 
 > Applied Deep Learning (PBL) project — B.E. CSE (AI & ML), Chennai Institute of Technology.
-> Dhakshan L (24AM0025) · Pragyasree K (24AM0079)
+> Dhakshan L (24AM0025)
 
 ---
 
